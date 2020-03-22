@@ -1,10 +1,12 @@
 import os
 import json
 import numpy as np
+from absl import app
 from absl import flags
 
 from google.protobuf.json_format import Parse
 from s2clientprotocol import sc2api_pb2 as sc_pb
+from s2clientprotocol import common_pb2 as common_pb
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(name='hq_replay_set', default='../high_quality_replays/Terran_vs_Terran.json',
@@ -25,7 +27,7 @@ def save(replays, prefix, folder):
     with open(os.path.join(folder, prefix+'.json'), 'w') as f:
         json.dump(replays, f)
 
-def main():
+def main(argv):
     np.random.seed(FLAGS.seed)
     ratio = np.asarray([float(i) for i in FLAGS.ratio.split(':')])
     ratio /= np.sum(ratio)
@@ -51,7 +53,7 @@ def main():
         proto = Parse(info['info'], sc_pb.ResponseReplayInfo())
         for p in proto.player_info:
             player_id = p.player_info.player_id
-            race = sc_pb.Race.Name(p.player_info.race_actual)
+            race = common_pb.Race.Name(p.player_info.race_actual)
 
             parsed_replays_info = {}
             ## Global Feature
@@ -88,4 +90,4 @@ def main():
     save(result[val_end:], 'test', FLAGS.save_path)
 
 if __name__ == '__main__':
-    main()
+    app.run(main)

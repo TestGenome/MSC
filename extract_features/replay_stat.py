@@ -8,6 +8,7 @@ import numpy as np
 
 import os
 import json
+from absl import app
 from absl import flags
 
 from tqdm import tqdm
@@ -77,7 +78,7 @@ def post_process(stat):
 
     return dict_key_to_str(stat)
 
-def main():
+def main(argv):
     replay_lists = sorted(glob.glob(os.path.join(FLAGS.hq_replay_path, '*{}*.json'.format(FLAGS.race))))
     save_path = os.path.join(FLAGS.parsed_replay_path, 'Stat')
     if not os.path.isdir(save_path):
@@ -124,4 +125,4 @@ def main():
         json.dump(stat, f)
 
 if __name__ == '__main__':
-    main()
+    app.run(main)

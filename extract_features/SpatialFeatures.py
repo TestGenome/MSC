@@ -24,7 +24,7 @@ class ScreenFeatures(collections.namedtuple("ScreenFeatures", ["height_map", "vi
 
 
 class MinimapFeatures(collections.namedtuple("MinimapFeatures", [
-    "height_map", "visibility_map", "creep", "player_relative", "unit_type"])):
+    "height_map", "visibility_map", "creep", "player_relative"])):
   """The set of minimap feature layers."""
   __slots__ = ()
 
@@ -50,7 +50,7 @@ SCREEN_FEATURES = ScreenFeatures(
     power=(2, FeatureType.CATEGORICAL, colors.POWER_PALETTE, False),
     player_relative=(5, FeatureType.CATEGORICAL,
                      colors.PLAYER_RELATIVE_PALETTE, False),
-    unit_type=(1850, FeatureType.CATEGORICAL, colors.unit_type, False),
+    unit_type=(1962, FeatureType.CATEGORICAL, colors.unit_type, False),
     unit_density=(16, FeatureType.SCALAR, colors.hot, False),
     unit_density_aa=(256, FeatureType.SCALAR, colors.hot, False),
 )
@@ -60,11 +60,86 @@ MINIMAP_FEATURES = MinimapFeatures(
     visibility_map=(4, FeatureType.CATEGORICAL, colors.VISIBILITY_PALETTE),
     creep=(2, FeatureType.CATEGORICAL, colors.CREEP_PALETTE),
     player_relative=(5, FeatureType.CATEGORICAL,
-                     colors.PLAYER_RELATIVE_PALETTE),
-    unit_type=(1850, FeatureType.CATEGORICAL, colors.unit_type)
+                     colors.PLAYER_RELATIVE_PALETTE)
 )
 
 class SpatialFeatures(Features):
+
+    def __init__(self, game_info, agent_interface_format=None, map_name=None, **kwargs):
+        """Construct a Features object using data extracted from game info.
+
+        Args:
+            game_info: A `sc_pb.ResponseGameInfo` from the game.
+            agent_interface_format: an optional AgentInterfaceFormat.
+            map_name: an optional map name, which overrides the one in game_info.
+            **kwargs: Anything else is passed through to AgentInterfaceFormat. It's an
+                error to send any kwargs if you pass an agent_interface_format.
+
+        Returns:
+            A features object matching the specified parameterisation.
+
+        Raises:
+            ValueError: if you pass both agent_interface_format and kwargs.
+            ValueError: if you pass an agent_interface_format that doesn't match
+                game_info's resolutions.
+        """
+        if not map_name:
+            map_name = game_info.map_name
+
+        if game_info.options.HasField("feature_layer"):
+            fl_opts = game_info.options.feature_layer
+            feature_dimensions = Dimensions(
+                screen=(fl_opts.resolution.x, fl_opts.resolution.y),
+                minimap=(fl_opts.minimap_resolution.x, fl_opts.minimap_resolution.y))
+            camera_width_world_units = game_info.options.feature_layer.width
+        else:
+            feature_dimensions = None
+            camera_width_world_units = None
+
+        if game_info.options.HasField("render"):
+            rgb_opts = game_info.options.render
+            rgb_dimensions = Dimensions(
+                screen=(rgb_opts.resolution.x, rgb_opts.resolution.y),
+                minimap=(rgb_opts.minimap_resolution.x, rgb_opts.minimap_resolution.y))
+        else:
+            rgb_dimensions = None
+
+        map_size = game_info.start_raw.map_size
+
+        requested_races = {
+            info.player_id: info.race_requested for info in game_info.player_info
+            if info.type != sc_pb.Observer}
+
+        if agent_interface_format:
+            if kwargs:
+                raise ValueError(
+                    "Either give an agent_interface_format or kwargs, not both.")
+            aif = agent_interface_format
+            if (aif.rgb_dimensions != rgb_dimensions or
+                aif.feature_dimensions != feature_dimensions or
+                (feature_dimensions and
+                aif.camera_width_world_units != camera_width_world_units)):
+                raise ValueError("""
+            The supplied agent_interface_format doesn't match the resolutions computed from
+            the game_info:
+            rgb_dimensions: %s != %s
+            feature_dimensions: %s != %s
+            camera_width_world_units: %s != %s
+            """ % (aif.rgb_dimensions, rgb_dimensions,
+                aif.feature_dimensions, feature_dimensions,
+                aif.camera_width_world_units, camera_width_world_units))
+        else:
+            agent_interface_format = AgentInterfaceFormat(
+                feature_dimensions=feature_dimensions,
+                rgb_dimensions=rgb_dimensions,
+                camera_width_world_units=camera_width_world_units,
+                **kwargs)
+
+        super().__init__(agent_interface_format=agent_interface_format,
+            map_size=map_size,
+            map_name=map_name,
+            requested_races=requested_races)
+
     def observation_spec(self):
         """The observation spec for the SC2 environment.
         Returns:

@@ -4,14 +4,16 @@ from __future__ import print_function
 
 import os
 import json
+from absl import app
 from absl import flags
 from tqdm import tqdm
 
 from google.protobuf.json_format import Parse
 
 from pysc2.lib import features
-from pysc2.lib import  FUNCTIONS
+from pysc2.lib.actions import FUNCTIONS
 from s2clientprotocol import sc2api_pb2 as sc_pb
+from s2clientprotocol import common_pb2 as common_pb
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(name='hq_replay_set', default='../high_quality_replays/Terran_vs_Terran.json',
@@ -26,7 +28,9 @@ flags.DEFINE_integer(name='skip', default=96,
                      help='# of skipped frames')
 
 def sample_action_from_player(action_path):
-    feat = features.Features(screen_size_px=(1, 1), minimap_size_px=(1, 1))
+    agent_intf = features.AgentInterfaceFormat(feature_dimensions=features.Dimensions(screen=(1,1), minimap=(1,1)))
+    feat = features.Features(agent_intf)
+
     with open(action_path) as f:
         actions = json.load(f)
 
@@ -62,7 +66,7 @@ def sample_action(replay_path, action_path, sampled_path):
     proto = Parse(info['info'], sc_pb.ResponseReplayInfo())
     for p in proto.player_info:
         player_id = p.player_info.player_id
-        race = sc_pb.Race.Name(p.player_info.race_actual)
+        race = common_pb.Race.Name(p.player_info.race_actual)
 
         action_file = os.path.join(action_path, race, '{}@{}'.format(player_id, replay_path))
         if not os.path.isfile(action_file):
@@ -76,7 +80,7 @@ def sample_action(replay_path, action_path, sampled_path):
     with open(os.path.join(sampled_path, replay_path), 'w') as f:
         json.dump(sampled_actions, f)
 
-def main():
+def main(argv):
     with open(FLAGS.hq_replay_set) as f:
         replay_list = json.load(f)
     replay_list = sorted([p for p, _ in replay_list])
@@ -93,4 +97,4 @@ def main():
         pbar.update()
 
 if __name__ == '__main__':
-    main()
+    app.run(main)

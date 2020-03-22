@@ -9,6 +9,7 @@ import json
 import signal
 import threading
 import queue as Queue
+from absl import app
 from absl import flags
 import multiprocessing
 from itertools import chain
@@ -38,12 +39,12 @@ class ReplayProcessor(multiprocessing.Process):
         self.total_num = total_num
 
     def run(self):
-        signal.signal(signal.SIGTERM, lambda a, b: sys.exit())  # Exit quietly.
+        signal.signal(signal.SIGTERM, lambda a, b: sys.exit())  # Kill thread upon termination signal
         while True:
-            with self.run_config.start() as controller:
+            with self.run_config.start() as controller: # Start SC2
                 for _ in range(FLAGS.batch_size):
                     try:
-                        replay_path = self.replay_queue.get()
+                        replay_path = self.replay_queue.get() # Get next replay
                     except Queue.Empty:
                         return
                     try:
@@ -64,13 +65,14 @@ def replay_queue_filler(replay_queue, replay_list):
     for replay_path in replay_list:
         replay_queue.put(replay_path)
 
-def main():
+def main(argv):
     if not os.path.isdir(FLAGS.save_path):
         os.makedirs(FLAGS.save_path)
 
     run_config = run_configs.get()
 
     try:
+        # Create controller thread for task allocation
         replay_list = sorted(chain(*[run_config.replay_paths(path)
                                         for path in FLAGS.replays_paths.split(';')
                                             if len(path.strip()) > 0]))
@@ -81,7 +83,7 @@ def main():
         replay_queue_thread.start()
 
         counter = multiprocessing.Value('i', 0)
-        for i in range(FLAGS.n_instance):
+        for _ in range(FLAGS.n_instance): # Create threads for processing
             p = ReplayProcessor(run_config, replay_queue, counter, len(replay_list))
             p.daemon = True
             p.start()
@@ -92,4 +94,4 @@ def main():
         print("Caught KeyboardInterrupt, exiting.")
 
 if __name__ == '__main__':
-    main()
+    app.run(main)

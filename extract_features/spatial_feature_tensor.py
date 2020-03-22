@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import json
 import stream
+from absl import app
 from absl import flags
 from multiprocessing import Pool
 
@@ -15,8 +16,10 @@ from tqdm import tqdm
 
 from google.protobuf.json_format import Parse
 
-from pysc2.lib import FUNCTIONS
+from pysc2.lib import features
+from pysc2.lib.actions import FUNCTIONS
 from s2clientprotocol import sc2api_pb2 as sc_pb
+from s2clientprotocol import common_pb2 as common_pb
 
 from game_state import load_stat
 from SpatialFeatures import SpatialFeatures
@@ -34,6 +37,7 @@ flags.DEFINE_integer(name='n_workers', default=16,
 def parse_replay(replay_player_path, sampled_action_path, reward, race, enemy_race, stat):
     with open(os.path.join(FLAGS.parsed_replay_path, 'GlobalInfos', replay_player_path)) as f:
         global_info = json.load(f)
+
     feat = SpatialFeatures(Parse(global_info['game_info'], sc_pb.ResponseGameInfo()))
 
     states = [obs for obs in stream.parse(os.path.join(FLAGS.parsed_replay_path,
@@ -93,7 +97,7 @@ class Parser(object):
         replay_name = os.path.basename(replay_path)
         sampled_action_path = os.path.join(FLAGS.parsed_replay_path, 'SampledActions', self.race_vs_race, replay_name)
         for player_info in info.player_info:
-            race = sc_pb.Race.Name(player_info.player_info.race_actual)
+            race = common_pb.Race.Name(player_info.player_info.race_actual)
             player_id = player_info.player_info.player_id
             reward = 2 - player_info.player_result.result
 
@@ -105,7 +109,7 @@ max_keys = ['frame_id', 'minerals', 'vespene', 'food_cap',
                     'food_cap', 'food_cap', 'food_cap', 'idle_worker_count',
                         'army_count', 'warp_gate_count', 'larva_count']
 
-def main():
+def main(argv):
     with open(FLAGS.hq_replay_set) as f:
         replay_list = sorted(json.load(f))
 
@@ -128,4 +132,4 @@ def main():
             pbar.update()
 
 if __name__ == '__main__':
-    main()
+    app.run(main)

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import json
+from absl import app
 from absl import flags
 
 import numpy as np
@@ -14,6 +15,7 @@ from tqdm import tqdm
 from google.protobuf.json_format import Parse
 
 from s2clientprotocol import sc2api_pb2 as sc_pb
+from s2clientprotocol import common_pb2 as common_pb
 
 from game_state import GameState
 
@@ -39,7 +41,7 @@ def parse_replay(replay_player_path, reward, race, enemy_race):
     sparse.save_npz(os.path.join(FLAGS.parsed_replay_path, 'GlobalFeatureVector',
                                  replay_player_path), sparse.csc_matrix(states_np))
 
-def main():
+def main(argv):
     with open(FLAGS.hq_replay_set) as f:
         replay_list = sorted(json.load(f))
 
@@ -59,7 +61,7 @@ def main():
 
         replay_name = os.path.basename(replay_path)
         for player_info in info.player_info:
-            race = sc_pb.Race.Name(player_info.player_info.race_actual)
+            race = common_pb.Race.Name(player_info.player_info.race_actual)
             player_id = player_info.player_info.player_id
             reward = player_info.player_result.result
 
@@ -69,4 +71,4 @@ def main():
         pbar.update()
 
 if __name__ == '__main__':
-    main()
+    app.run(main)

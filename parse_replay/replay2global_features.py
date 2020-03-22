@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import json
 import stream
+from absl import app
 from absl import flags
 
 from tqdm import tqdm
@@ -12,9 +13,10 @@ from tqdm import tqdm
 from google.protobuf.json_format import Parse
 
 from pysc2.lib import features
-from pysc2.lib import FUNCTIONS
+from pysc2.lib.actions import FUNCTIONS
 from pysc2.lib import static_data
 from s2clientprotocol import sc2api_pb2 as sc_pb
+from s2clientprotocol import common_pb2 as common_pb
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(name='hq_replay_set', default='../high_quality_replays/Terran_vs_Terran.json',
@@ -121,7 +123,7 @@ def parse_replay(replay_player_path, sampled_action_path, reward):
     with open(os.path.join(FLAGS.parsed_replay_path, 'GlobalInfos', replay_player_path)) as f:
         global_info = json.load(f)
     units_info = static_data.StaticData(Parse(global_info['data_raw'], sc_pb.ResponseData())).units
-    feat = features.Features(Parse(global_info['game_info'], sc_pb.ResponseGameInfo()))
+    feat = features.features_from_game_info(Parse(global_info['game_info'], sc_pb.ResponseGameInfo()))
 
     # Sampled Actions
     with open(sampled_action_path) as f:
@@ -145,7 +147,7 @@ def parse_replay(replay_player_path, sampled_action_path, reward):
     with open(os.path.join(FLAGS.parsed_replay_path, 'GlobalFeatures', replay_player_path), 'w') as f:
         json.dump(states, f)
 
-def main():
+def main(argv):
     with open(FLAGS.hq_replay_set) as f:
         replay_list = sorted(json.load(f))
 
@@ -165,7 +167,7 @@ def main():
         replay_name = os.path.basename(replay_path)
         sampled_action_path = os.path.join(FLAGS.parsed_replay_path, 'SampledActions', race_vs_race, replay_name)
         for player_info in info.player_info:
-            race = sc_pb.Race.Name(player_info.player_info.race_actual)
+            race = common_pb.Race.Name(player_info.player_info.race_actual)
             player_id = player_info.player_info.player_id
             reward = player_info.player_result.result
 
@@ -175,4 +177,4 @@ def main():
         pbar.update()
 
 if __name__ == '__main__':
-    main()
+    app.run(main)

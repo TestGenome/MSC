@@ -10,6 +10,7 @@ import signal
 import threading
 import queue as Queue
 import multiprocessing
+from absl import app
 from absl import flags
 from future.builtins import range
 
@@ -18,6 +19,7 @@ from google.protobuf.json_format import MessageToJson
 from pysc2 import run_configs
 from pysc2.lib import point
 from s2clientprotocol import sc2api_pb2 as sc_pb
+from s2clientprotocol import common_pb2 as common_pb
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(name='hq_replay_set', default='../high_quality_replays/Terran_vs_Terran.json',
@@ -74,7 +76,7 @@ class ReplayProcessor(multiprocessing.Process):
                             map_data = self.run_config.map_data(info.local_map_path)
 
                         for player_info in info.player_info:
-                            race = sc_pb.Race.Name(player_info.player_info.race_actual)
+                            race = common_pb.Race.Name(player_info.player_info.race_actual)
                             player_id = player_info.player_info.player_id
 
                             if os.path.isfile(os.path.join(FLAGS.save_path, race,
@@ -114,7 +116,7 @@ def replay_queue_filler(replay_queue, replay_list):
     for replay_path in replay_list:
         replay_queue.put(replay_path)
 
-def main():
+def main(argv):
     race_vs_race = os.path.basename(FLAGS.hq_replay_set).split('.')[0]
     FLAGS.save_path = os.path.join(FLAGS.save_path, 'Actions', race_vs_race)
 
@@ -136,7 +138,7 @@ def main():
         replay_queue_thread.start()
 
         counter = multiprocessing.Value('i', 0)
-        for i in range(FLAGS.n_instance):
+        for _ in range(FLAGS.n_instance):
             p = ReplayProcessor(run_config, replay_queue, counter, len(replay_list))
             p.daemon = True
             p.start()
@@ -147,4 +149,4 @@ def main():
         print("Caught KeyboardInterrupt, exiting.")
 
 if __name__ == '__main__':
-    main()
+    app.run(main)
