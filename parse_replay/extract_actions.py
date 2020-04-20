@@ -55,9 +55,9 @@ class ReplayProcessor(multiprocessing.Process):
         self.total_num = total_num
 
     def run(self):
-        signal.signal(signal.SIGTERM, lambda a, b: sys.exit())  # Exit quietly.
+        signal.signal(signal.SIGTERM, lambda a, b: sys.exit())  # Kill thread upon termination signal
         while True:
-            with self.run_config.start() as controller:
+            with self.run_config.start() as controller: 
                 for _ in range(FLAGS.batch_size):
                     try:
                         replay_path = self.replay_queue.get()
@@ -69,21 +69,21 @@ class ReplayProcessor(multiprocessing.Process):
                             self.counter.value += 1
                             print('Processing {}/{} ...'.format(self.counter.value, self.total_num))
 
-                        replay_data = self.run_config.replay_data(replay_path)
+                        replay_data = self.run_config.replay_data(replay_path) # Get high level replay data
                         info = controller.replay_info(replay_data)
                         map_data = None
-                        if info.local_map_path:
-                            map_data = self.run_config.map_data(info.local_map_path)
+                        if info.local_map_path: # Special handling for custom maps
+                            map_data = self.run_config.map_data(info.local_map_path) 
 
-                        for player_info in info.player_info:
+                        for player_info in info.player_info: # Process replay from each players point of view
                             race = common_pb.Race.Name(player_info.player_info.race_actual)
                             player_id = player_info.player_info.player_id
 
                             if os.path.isfile(os.path.join(FLAGS.save_path, race,
-                                                           '{}@{}'.format(player_id, os.path.basename(replay_path)))):
+                                                           '{}@{}'.format(player_id, os.path.basename(replay_path)))): # Skip replays that have already been processed
                                 continue
 
-                            self.process_replay(controller, replay_data, map_data, player_id, race, replay_path)
+                            self.process_replay(controller, replay_data, map_data, player_id, race, replay_path) # Process replay
                     except Exception as e:
                         print(e)
                         break
@@ -91,7 +91,7 @@ class ReplayProcessor(multiprocessing.Process):
                         self.replay_queue.task_done()
 
     def process_replay(self, controller, replay_data, map_data, player_id, race, replay_path):
-        controller.start_replay(sc_pb.RequestStartReplay(
+        controller.start_replay(sc_pb.RequestStartReplay( # Start the replay
             replay_data=replay_data,
             map_data=map_data,
             options=interface,
@@ -99,17 +99,18 @@ class ReplayProcessor(multiprocessing.Process):
 
         save_folder = os.path.join(FLAGS.save_path, race)
         actions = []
-        controller.step()
+        
         while True:
-            obs = controller.observe()
-            actions.append([MessageToJson(a) for a in obs.actions])
+            controller.step(FLAGS.step_mul)
+            obs = controller.observe()  # Get observation from current frame
+            actions.append([MessageToJson(a) for a in obs.actions]) # Save all actions observed between previous and current observed frame
 
-            if obs.player_result:
+            if obs.player_result: # Player result obtained means game has ended
                 with open(os.path.join(save_folder, '{}@{}'.format(
                         player_id, os.path.basename(replay_path))), 'w') as f:
                     json.dump(actions, f)
                 return
-            controller.step(FLAGS.step_mul)
+
 
 def replay_queue_filler(replay_queue, replay_list):
     """A thread that fills the replay_queue with replay filenames."""
@@ -117,20 +118,21 @@ def replay_queue_filler(replay_queue, replay_list):
         replay_queue.put(replay_path)
 
 def main(argv):
-    race_vs_race = os.path.basename(FLAGS.hq_replay_set).split('.')[0]
+    race_vs_race = os.path.basename(FLAGS.hq_replay_set).split('.')[0] # Get the specified matchup
     FLAGS.save_path = os.path.join(FLAGS.save_path, 'Actions', race_vs_race)
 
-    for race in set(race_vs_race.split('_vs_')):
-        path = os.path.join(FLAGS.save_path, race)
+    for race in set(race_vs_race.split('_vs_')): # Handle each race in the matchup
+        path = os.path.join(FLAGS.save_path, race) # Make 'parsed_replays' path for race
         if not os.path.isdir(path):
             os.makedirs(path)
 
-    run_config = run_configs.get()
+    run_config = run_configs.get() # Get SC2 run config
     try:
-        with open(FLAGS.hq_replay_set) as f:
+        with open(FLAGS.hq_replay_set) as f: # Get all the replays from preprocess
             replay_list = json.load(f)
         replay_list = sorted([p for p, _ in replay_list])
 
+        # Create controller thread for allocating replays 
         replay_queue = multiprocessing.JoinableQueue(FLAGS.n_instance * 10)
         replay_queue_thread = threading.Thread(target=replay_queue_filler,
                                            args=(replay_queue, replay_list))
@@ -138,7 +140,7 @@ def main(argv):
         replay_queue_thread.start()
 
         counter = multiprocessing.Value('i', 0)
-        for _ in range(FLAGS.n_instance):
+        for _ in range(FLAGS.n_instance): # Start worker threads
             p = ReplayProcessor(run_config, replay_queue, counter, len(replay_list))
             p.daemon = True
             p.start()

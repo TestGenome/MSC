@@ -71,14 +71,17 @@ class BatchEnv(object):
         raise NotImplementedError
 
     def step(self, **kwargs):
+        """
+        Perform one batch of n_replays for training
+        """
         require_init = [False for _ in range(self.n_replays)]
         for i in range(self.n_replays):
-            if self.replay_list[i] is None or self.replay_list[i]['done']:
-                if self.replay_list[i] is not None:
+            if self.replay_list[i] is None or self.replay_list[i]['done']: # Set replay_list elements
+                if self.replay_list[i] is not None: # self.replay_list[i]['done']
                     keys = set(self.replay_list[i].keys())
                     for k in keys:
                         del self.replay_list[i][k]
-                self.replay_list[i] = self.__reset__()
+                self.replay_list[i] = self.__reset__() 
                 require_init[i] = True
             if self.replay_list[i] is None:
                 return None
@@ -156,6 +159,8 @@ class BatchGlobalFeatureEnv(BatchEnv):
     def __post_process__(self, result, reward=True, action=False, score=False):
         result = np.asarray(result)
 
+        # First dimension of result is the step, second is the replay, third is state
+
         result_return = [result[:, :, 15:]]
         if reward:
             result_return.append(result[:, :, 0:1])
@@ -211,6 +216,10 @@ class BatchSpatialEnv(BatchEnv):
         return self.Feature(state_S, state_G)
 
     def __post_process__(self, result, reward=True, action=False, score=False):
+        """
+        Extract reward and actions
+        """
+
         result = self.Feature(*zip(*[self.Feature(*zip(*result_per_step)) for result_per_step in result]))
 
         S = np.asarray(result.S)

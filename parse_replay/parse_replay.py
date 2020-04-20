@@ -56,7 +56,7 @@ class ReplayProcessor(multiprocessing.Process):
         self.total_num = total_num
 
     def run(self):
-        signal.signal(signal.SIGTERM, lambda a, b: sys.exit())  # Exit quietly.
+        signal.signal(signal.SIGTERM, lambda a, b: sys.exit())  # Kill thread upon termination signal
         while True:
             with self.run_config.start() as controller:
                 for _ in range(FLAGS.batch_size):
@@ -70,21 +70,22 @@ class ReplayProcessor(multiprocessing.Process):
                             print('Processing {}/{} ...'.format(self.counter.value, self.total_num))
 
                         sampled_action_path = os.path.join(FLAGS.save_path.replace(
-                            'SampledObservations', 'SampledActions'), os.path.basename(replay_path))
-                        if not os.path.isfile(sampled_action_path):
+                            'SampledObservations', 'SampledActions'), os.path.basename(replay_path)) 
+                        if not os.path.isfile(sampled_action_path): # Unable to find the sampled observations of replay
+                            print('Unable to locate', sampled_action_path)
                             return
 
-                        with open(sampled_action_path) as f:
+                        with open(sampled_action_path) as f: # Get all macro action frames
                             actions = json.load(f)
-                        actions.insert(0, 0)
+                        actions.insert(0, 0) # Add 0th frame to the start
 
                         replay_data = self.run_config.replay_data(replay_path)
                         info = controller.replay_info(replay_data)
                         map_data = None
-                        if info.local_map_path:
+                        if info.local_map_path: # Special handling for custom maps
                             map_data = self.run_config.map_data(info.local_map_path)
 
-                        for player_info in info.player_info:
+                        for player_info in info.player_info: # Parse replay from each player's point of view
                             race = common_pb.Race.Name(player_info.player_info.race_actual)
                             player_id = player_info.player_info.player_id
 
@@ -92,7 +93,7 @@ class ReplayProcessor(multiprocessing.Process):
                                                             '{}@{}'.format(player_id, os.path.basename(replay_path)))
                             global_info_path = observation_path.replace('SampledObservations', 'GlobalInfos')
 
-                            if os.path.isfile(observation_path) and os.path.isfile(global_info_path):
+                            if os.path.isfile(observation_path) and os.path.isfile(global_info_path): # Skip replay if it has already been processed
                                 continue
 
                             ostream = stream.open(observation_path, 'wb', buffer_size=1000)
@@ -122,32 +123,31 @@ class ReplayProcessor(multiprocessing.Process):
             options=interface,
             observed_player_id=player_id))
 
-        global_info = {'game_info': controller.game_info(),
-                       'data_raw': controller.data_raw()}
+        global_info = {'game_info': controller.game_info(), # Get the basic information about the game
+                       'data_raw': controller.data_raw()}   # Get the raw static data for the current game
         with open(global_info_path, 'w') as f:
             json.dump({k:MessageToJson(v) for k, v in global_info.items()}, f)
 
-        controller.step()
-        for pre_id, id in zip(actions[:-1], actions[1:]):
+        for pre_id, id in zip(actions[:-1], actions[1:]): # Loop through all the steps, zip creates pairs of previous and current frame ids
             controller.step(id - pre_id)
             obs = controller.observe()
-            ostream.write(obs)
+            ostream.write(obs) # Save observations
 
 def replay_queue_filler(replay_queue, replay_list):
-    """A thread that fills the replay_queue with replay filenames."""
+    """A thread that fills the replay_queue with replay paths."""
     for replay_path in replay_list:
         replay_queue.put(replay_path)
 
 def main(argv):
-    race_vs_race = os.path.basename(FLAGS.hq_replay_set).split('.')[0]
+    race_vs_race = os.path.basename(FLAGS.hq_replay_set).split('.')[0] # Get the specified matchup
     FLAGS.save_path = os.path.join(FLAGS.save_path, 'SampledObservations', race_vs_race)
 
-    for race in set(race_vs_race.split('_vs_')):
-        path = os.path.join(FLAGS.save_path, race)
+    for race in set(race_vs_race.split('_vs_')): # Handle each race in the matchup
+        path = os.path.join(FLAGS.save_path, race) # Create 'SampledObservations' path for race
         if not os.path.isdir(path):
             os.makedirs(path)
 
-        path = path.replace('SampledObservations', 'GlobalInfos')
+        path = path.replace('SampledObservations', 'GlobalInfos') # Create 'GlobalInfos' path for race
         if not os.path.isdir(path):
             os.makedirs(path)
 

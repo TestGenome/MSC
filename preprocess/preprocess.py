@@ -64,18 +64,18 @@ def main(argv):
 
     result = {}
     pbar = tqdm(total=len(replay_infos), desc='#Replay')
-    for info_path in replay_infos:
+    for info_path in replay_infos: # Loop through all replay infos
         with open(info_path) as f:
             info = json.load(f)
 
-        proto = Parse(info['info'], sc_pb.ResponseReplayInfo())
+        proto = Parse(info['info'], sc_pb.ResponseReplayInfo()) # Parse info for current replay
         if valid_replay(proto, ping):
             players_info = proto.player_info
-            races = '_vs_'.join(sorted(common_pb.Race.Name(player_info.player_info.race_actual)
+            races = '_vs_'.join(sorted(common_pb.Race.Name(player_info.player_info.race_actual) # Create the matchup
                                        for player_info in players_info))
             if races not in result:
                 result[races] = []
-            result[races].append((info['path'], info_path))
+            result[races].append((info['path'], info_path)) # Save based on race vs race
         pbar.update()
 
     for k, v in result.items():

@@ -26,14 +26,14 @@ flags.DEFINE_string(name='parsed_replay_path', default='../parsed_replays',
 flags.DEFINE_integer(name='step_mul', default=8,
                      help='step size')
 
-def process_replay(sampled_action, actions, observations, feat, units_info, reward):
+def process_replay(sampled_frames, sampled_actions, observations, feat, units_info, reward):
     states = []
 
-    for frame_id, action, obs in zip(sampled_action, actions, observations):
+    for frame_id, action, obs in zip(sampled_frames, sampled_actions, observations):
         state = {}
         # actions
         state['action'] = None
-        if action is not None:
+        if action is not None: # Get name of the action executed during this frame
             try:
                 func_id = feat.reverse_action(action).function
                 func_name = FUNCTIONS[func_id].name
@@ -95,9 +95,9 @@ def process_replay(sampled_action, actions, observations, feat, units_info, rewa
         state['friendly_units'] = {}
         state['enemy_units'] = {}
         for unit in raw_data.units:
-            if unit.display_type == 3:
+            if unit.display_type == 3: # Make sure unit is not hidden
                 continue
-            if unit.alliance != 1 and unit.alliance != 4:
+            if unit.alliance != 1 and unit.alliance != 4: # Make sure unit is either ally or enemy
                 continue
             # Friendly or Enemy
             units = state['friendly_units'] if unit.alliance == 1 else state['enemy_units']
@@ -115,7 +115,7 @@ def process_replay(sampled_action, actions, observations, feat, units_info, rewa
 
     return states
 
-def parse_replay(replay_player_path, sampled_action_path, reward):
+def parse_replay(replay_player_path, sampled_frame_path, reward):
     if os.path.isfile(os.path.join(FLAGS.parsed_replay_path, 'GlobalFeatures', replay_player_path)):
         return
 
@@ -125,24 +125,24 @@ def parse_replay(replay_player_path, sampled_action_path, reward):
     units_info = static_data.StaticData(Parse(global_info['data_raw'], sc_pb.ResponseData())).units
     feat = features.features_from_game_info(Parse(global_info['game_info'], sc_pb.ResponseGameInfo()))
 
-    # Sampled Actions
-    with open(sampled_action_path) as f:
-        sampled_action = json.load(f)
-    sampled_action_id = [id // FLAGS.step_mul + 1 for id in sampled_action]
+    # Sampled Frames
+    with open(sampled_frame_path) as f:
+        sampled_frames = json.load(f)
+    sampled_actions_idx = [frame // FLAGS.step_mul - 1 for frame in sampled_frames] # Create index to retrieve actions corresponding to sampled frames
 
     # Actions
     with open(os.path.join(FLAGS.parsed_replay_path, 'Actions', replay_player_path)) as f:
         actions = json.load(f)
-    actions = [None if len(actions[idx]) == 0 else Parse(actions[idx][0], sc_pb.Action())
-                for idx in sampled_action_id]
+    sampled_actions = [None if len(actions[idx]) == 0 else Parse(actions[idx][0], sc_pb.Action()) 
+                for idx in sampled_actions_idx] # Get first action executed after each sampled frame
 
     # Observations
     observations =  [obs for obs in stream.parse(os.path.join(FLAGS.parsed_replay_path,
                             'SampledObservations', replay_player_path), sc_pb.ResponseObservation)]
 
-    assert len(sampled_action) == len(sampled_action_id) == len(actions) == len(observations)
+    assert len(sampled_frames) == len(sampled_actions_idx) == len(sampled_actions) == len(observations)
 
-    states = process_replay(sampled_action, actions, observations, feat, units_info, reward)
+    states = process_replay(sampled_frames, sampled_actions, observations, feat, units_info, reward)
 
     with open(os.path.join(FLAGS.parsed_replay_path, 'GlobalFeatures', replay_player_path), 'w') as f:
         json.dump(states, f)
@@ -159,20 +159,20 @@ def main(argv):
             os.makedirs(path)
 
     pbar = tqdm(total=len(replay_list), desc='#Replay')
-    for replay_path, replay_info_path in replay_list:
+    for replay_path, replay_info_path in replay_list: # Parse all replays
         with open(replay_info_path) as f:
             info = json.load(f)
         info = Parse(info['info'], sc_pb.ResponseReplayInfo())
 
         replay_name = os.path.basename(replay_path)
-        sampled_action_path = os.path.join(FLAGS.parsed_replay_path, 'SampledActions', race_vs_race, replay_name)
-        for player_info in info.player_info:
+        sampled_frame_path = os.path.join(FLAGS.parsed_replay_path, 'SampledFrames', race_vs_race, replay_name)
+        for player_info in info.player_info: # Parse replay from each players point of view
             race = common_pb.Race.Name(player_info.player_info.race_actual)
             player_id = player_info.player_info.player_id
             reward = player_info.player_result.result
 
             replay_player_path = os.path.join(race_vs_race, race, '{}@{}'.format(player_id, replay_name))
-            parse_replay(replay_player_path, sampled_action_path, reward)
+            parse_replay(replay_player_path, sampled_frame_path, reward)
 
         pbar.update()
 

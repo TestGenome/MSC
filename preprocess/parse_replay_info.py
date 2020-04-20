@@ -41,18 +41,18 @@ class ReplayProcessor(multiprocessing.Process):
     def run(self):
         signal.signal(signal.SIGTERM, lambda a, b: sys.exit())  # Kill thread upon termination signal
         while True:
-            with self.run_config.start() as controller: # Start SC2
+            with self.run_config.start() as controller: # Get SC2 run configuration
                 for _ in range(FLAGS.batch_size):
                     try:
                         replay_path = self.replay_queue.get() # Get next replay
                     except Queue.Empty:
-                        return
+                        return # No more replays to process
                     try:
-                        replay_data = self.run_config.replay_data(replay_path)
-                        info = controller.replay_info(replay_data)
+                        replay_data = self.run_config.replay_data(replay_path) 
+                        info = controller.replay_info(replay_data) # Get high level replay info
 
                         info_json = MessageToJson(info)
-                        with open(os.path.join(FLAGS.save_path, os.path.basename(replay_path)), 'w') as f:
+                        with open(os.path.join(FLAGS.save_path, os.path.basename(replay_path)), 'w') as f: # Save replay info
                             json.dump({'info': info_json, 'path':replay_path}, f)
                         with self.counter.get_lock():
                             self.counter.value += 1
@@ -72,7 +72,7 @@ def main(argv):
     run_config = run_configs.get()
 
     try:
-        # Create controller thread for task allocation
+        # Create controller thread for allocating replays
         replay_list = sorted(chain(*[run_config.replay_paths(path)
                                         for path in FLAGS.replays_paths.split(';')
                                             if len(path.strip()) > 0]))
